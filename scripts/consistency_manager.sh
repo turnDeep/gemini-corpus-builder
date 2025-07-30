@@ -25,6 +25,34 @@ log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
+# ファイル名をサニタイズする関数
+sanitize_filename() {
+    # スラッシュ、ヌル文字、その他制御文字を削除
+    # スペースと特殊文字をアンダースコアに置換
+    # 連続するアンダースコアを一つにまとめる
+    # 先頭と末尾のアンダースコアを削除
+    echo "$1" | tr -d '/\0' | tr '[:space:][:punct:]' '_' | sed 's/__*/_/g' | sed 's/^_//;s/_$//'
+}
+
+# 変換されたテキストからファイル名を生成する関数
+generate_filename_from_content() {
+    local content_file=$1
+    local max_chars=1000 # 要約のためにGeminiに渡す最大文字数
+
+    # ファイルの内容を切り詰める
+    local truncated_content=$(head -c $max_chars "$content_file")
+
+    # Geminiに要約を依頼
+    local summary=$(gemini -p "以下のテキスト内容を、ファイル名として適切な30文字程度の日本語の要約にしてください。句読点や特殊文字は含めず、簡潔な表現でお願いします。要約のみを出力してください。
+
+テキスト：
+$truncated_content
+")
+
+    # サニタイズして返す
+    sanitize_filename "$summary"
+}
+
 # 初期化
 init_consistency_system() {
     echo -e "${BLUE}=== 整合性管理システム初期化 ===${NC}"
@@ -210,18 +238,23 @@ convert_with_consistency() {
     
     for input_file in "${input_files[@]}"; do
         local filename=$(basename "$input_file")
-        local output_file="output/$filename"
+        # 一時的な出力ファイルを作成
+        local temp_output_file
+        temp_output_file=$(mktemp "output/${filename}.tmp.XXXXXX")
 
         ((processed++))
         
+        local conversion_success=false
+
         # 大容量ファイルの場合
         if is_large_file "$input_file"; then
             ((split_processed++))
             echo -e "${YELLOW}  ($processed/$total_files) [分割処理] $filename${NC}"
             
             # smart_convert_fileで自動分割処理
-            if smart_convert_file "$input_file" "$output_file" "$rules" "$dictionary" "log"; then
+            if smart_convert_file "$input_file" "$temp_output_file" "$rules" "$dictionary" "log"; then
                 log "成功（分割処理）: $filename"
+                conversion_success=true
             else
                 log "エラー（分割処理）: $filename"
                 ((errors++))
@@ -236,7 +269,7 @@ convert_with_consistency() {
             local content=$(cat "$input_file")
 
             # 各ファイルに対してGeminiで変換
-            gemini -p "以下の整合性リソースと入力テキストを使用して、文語形式のテキストを生成してください。
+            if gemini -p "以下の整合性リソースと入力テキストを使用して、文語形式のテキストを生成してください。
 
 ## 整合性ルール
 $rules
@@ -253,10 +286,9 @@ $content
 1. 上記のルールと辞書を厳密に適用してください。
 2. テキスト全体を、RAGでの検索に適した、高品質な文語体の文章に変換してください。
 3. 元のテキストの意図や情報を保持してください。
-4. 生成された文語体のテキストのみを出力してください。追加の説明や前置きは不要です。" > "$output_file" 2>> "$LOG_FILE"
-
-            if [ $? -eq 0 ]; then
+4. 生成された文語体のテキストのみを出力してください。追加の説明や前置きは不要です。" > "$temp_output_file" 2>> "$LOG_FILE"; then
                 log "成功: $filename"
+                conversion_success=true
             else
                 log "エラー: $filename の変換に失敗しました"
                 ((errors++))
@@ -264,6 +296,29 @@ $content
             
             # APIレート制限対策
             sleep 0.5
+        fi
+
+        # 変換が成功した場合、要約ファイル名にリネーム
+        if [ "$conversion_success" = true ]; then
+            if [ -s "$temp_output_file" ]; then # ファイルが空でないことを確認
+                local new_filename_base
+                new_filename_base=$(generate_filename_from_content "$temp_output_file")
+                local final_output_file="output/${new_filename_base}.txt"
+
+                # ファイル名の重複を避ける
+                if [ -f "$final_output_file" ]; then
+                    final_output_file="output/${new_filename_base}_$(date +%s).txt"
+                fi
+
+                mv "$temp_output_file" "$final_output_file"
+                log "リネーム: $filename -> $(basename "$final_output_file")"
+            else
+                log "警告: 変換後のファイルが空のため、リネームをスキップ: $filename"
+                rm "$temp_output_file" # 空の一時ファイルを削除
+            fi
+        else
+            # 失敗した場合は一時ファイルを削除
+            rm "$temp_output_file"
         fi
     done
 
