@@ -4,6 +4,10 @@ input/*
 output/*
 !output/.gitkeep
 
+# 整合性管理作業ファイル
+consistency_work/*
+!consistency_work/.gitkeep
+
 # ログファイル
 logs/*
 !logs/.gitkeep
