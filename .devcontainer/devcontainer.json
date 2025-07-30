@@ -37,6 +37,7 @@
   ],
   
   "remoteEnv": {
-    "GEMINI_API_KEY": "${localEnv:GEMINI_API_KEY}"
+    "GEMINI_API_KEY": "${localEnv:GEMINI_API_KEY}",
+    "NO_BROWSER": "true"
   }
 }
