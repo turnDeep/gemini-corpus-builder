@@ -1,0 +1,46 @@
+# 入出力ファイル
+input/*
+!input/.gitkeep
+output/*
+!output/.gitkeep
+
+# ログファイル
+logs/*
+!logs/.gitkeep
+*.log
+
+# テストファイル
+test/input/*
+test/output/*
+!test/input/.gitkeep
+!test/output/.gitkeep
+
+# 環境設定
+.env
+.env.local
+.env.*.local
+
+# Gemini設定（個人設定）
+.gemini/settings.json
+
+# 一時ファイル
+*.tmp
+*.cache
+*.bak
+.DS_Store
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+desktop.ini
