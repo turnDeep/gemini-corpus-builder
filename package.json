@@ -1,0 +1,31 @@
+{
+  "name": "gemini-corpus-builder",
+  "version": "1.0.0",
+  "description": "口語テキストを文語形式に変換してRAG用コーパスを構築するツール",
+  "main": "index.js",
+  "scripts": {
+    "setup": "make setup",
+    "convert": "make convert",
+    "validate": "make validate",
+    "stats": "make stats",
+    "test": "make test",
+    "clean": "make clean"
+  },
+  "keywords": [
+    "gemini-cli",
+    "text-conversion",
+    "corpus-builder",
+    "rag",
+    "nlp",
+    "japanese"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0"
+  },
+  "dependencies": {}
+}
