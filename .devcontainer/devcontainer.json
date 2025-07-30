@@ -1,0 +1,42 @@
+{
+  "name": "Gemini Corpus Builder Dev Container",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  
+  "postCreateCommand": "npm install -g @google/gemini-cli && make setup",
+  
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "files.associations": {
+          "*.md": "markdown",
+          "*.txt": "plaintext"
+        }
+      },
+      "extensions": [
+        "esbenp.prettier-vscode",
+        "streetsidesoftware.code-spell-checker",
+        "yzhang.markdown-all-in-one"
+      ]
+    }
+  },
+  
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11"
+    }
+  },
+  
+  "mounts": [
+    "source=${localWorkspaceFolder}/input,target=/workspace/input,type=bind",
+    "source=${localWorkspaceFolder}/output,target=/workspace/output,type=bind"
+  ],
+  
+  "remoteEnv": {
+    "GEMINI_API_KEY": "${localEnv:GEMINI_API_KEY}"
+  }
+}
