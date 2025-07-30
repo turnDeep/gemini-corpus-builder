@@ -4,6 +4,8 @@
 
 # 共通関数を読み込み
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
+source "$SCRIPT_DIR/utils.sh"
 source "$SCRIPT_DIR/split_and_convert.sh"
 
 # 設定
@@ -25,124 +27,6 @@ log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
-# ファイル名をサニタイズする関数
-sanitize_filename() {
-    # スラッシュ、ヌル文字、その他制御文字を削除
-    # スペースと特殊文字をアンダースコアに置換
-    # 連続するアンダースコアを一つにまとめる
-    # 先頭と末尾のアンダースコアを削除
-    echo "$1" | tr -d '/\0' | tr '[:space:][:punct:]' '_' | sed 's/__*/_/g' | sed 's/^_//;s/_$//'
-}
-
-# Geminiコマンドのラッパー関数（ロギング対応）
-gemini_wrapper() {
-    local prompt="$1"
-    local output_file="${2:-}" # 出力ファイルは任意
-
-    # LOG_LEVELがdebugの場合、プロンプトをログに出力
-    # config.shから読み込まれることを想定
-    if [ "${LOG_LEVEL}" == "debug" ]; then
-        log "--- Gemini Prompt ---
-$prompt
----------------------"
-    fi
-
-    local response
-    # 2>>でエラーをログファイルにリダイレクトしつつ、STDOUTは変数にキャプチャ
-    if response=$(gemini -p "$prompt" 2>> "$LOG_FILE"); then
-        if [ "${LOG_LEVEL}" == "debug" ]; then
-            log "--- Gemini Response ---
-$response
------------------------"
-        fi
-
-        # 出力ファイルが指定されていれば書き込み、なければSTDOUTに出力
-        if [ -n "$output_file" ]; then
-            echo "$response" > "$output_file"
-        else
-            echo "$response"
-        fi
-        return 0
-    else
-        log "エラー: Geminiコマンドの実行に失敗しました。"
-        # レスポンス変数にエラーメッセージを入れておく（呼び出し元で利用可能）
-        response="GEMINI_COMMAND_FAILED"
-        return 1
-    fi
-}
-export -f gemini_wrapper
-
-# 変換時間の予測
-estimate_conversion_time() {
-    local files=("$@")
-    local total_files=${#files[@]}
-    local total_chunks=0
-    local normal_files=0
-    local large_files=0
-
-    # 平均API時間（秒）- 変換と要約生成の2回呼び出しを考慮
-    local avg_conversion_api_time=8
-    local avg_summary_api_time=3
-
-    # ファイルを分析してチャンク数を計算
-    for file in "${files[@]}"; do
-        if is_large_file "$file";
-        then
-            ((large_files++))
-            local size
-            size=$(check_file_size "$file")
-            # CHUNK_SIZEはsplit_and_convert.shから取得
-            # シェルスクリプトでは浮動小数点数計算が面倒なため、整数演算で切り上げを表現
-            local chunks=$(( (size + CHUNK_SIZE - 1) / CHUNK_SIZE ))
-            ((total_chunks += chunks))
-        else
-            ((normal_files++))
-        fi
-    done
-
-    # API遅延はconfig.shから取得。未設定の場合のデフォルト値。
-    local api_delay=${API_DELAY:-0.5}
-    local chunk_delay=${CHUNK_DELAY:-1}
-
-    # 時間計算
-    local normal_time_float=$(echo "$normal_files * ($avg_conversion_api_time + $avg_summary_api_time) + $normal_files * $api_delay" | bc)
-    local large_time_float=$(echo "$total_chunks * ($avg_conversion_api_time + $chunk_delay) + $large_files * $avg_summary_api_time" | bc)
-    local total_seconds_float=$(echo "$normal_time_float + $large_time_float" | bc)
-
-    # bcの結果を整数に変換
-    local total_seconds=${total_seconds_float%.*}
-
-    # 人間が読みやすい形式に変換
-    local minutes=$(( total_seconds / 60 ))
-    local seconds=$(( total_seconds % 60 ))
-
-    echo "---"
-    echo -e "${BLUE}予測変換時間: 約 ${minutes} 分 ${seconds} 秒${NC}"
-    echo "  (通常ファイル: $normal_files, 大容量ファイル: $large_files, 総チャンク数: $total_chunks)"
-    echo "  ※ これはあくまで目安です。ネットワークの状態やAPIの応答速度によって変動します。"
-    echo "---"
-}
-
-# 変換されたテキストからファイル名を生成する関数
-generate_filename_from_content() {
-    local content_file=$1
-    local max_chars=1000 # 要約のためにGeminiに渡す最大文字数
-
-    # ファイルの内容を切り詰める
-    local truncated_content=$(head -c $max_chars "$content_file")
-
-    # Geminiに要約を依頼
-    local prompt="以下のテキスト内容を、ファイル名として適切な30文字程度の日本語の要約にしてください。句読点や特殊文字は含めず、簡潔な表現でお願いします。要約のみを出力してください。
-
-テキスト：
-$truncated_content
-"
-    local summary
-    summary=$(gemini_wrapper "$prompt")
-
-    # サニタイズして返す
-    sanitize_filename "$summary"
-}
 
 # 初期化
 init_consistency_system() {
@@ -314,7 +198,7 @@ convert_with_consistency() {
     fi
 
     # 変換時間の予測を表示
-    estimate_conversion_time "${input_files[@]}"
+    estimate_conversion_time "consistency" "${input_files[@]}"
 
     # 大容量ファイルのカウント
     local large_count=0
