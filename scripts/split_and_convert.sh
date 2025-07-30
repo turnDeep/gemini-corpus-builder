@@ -130,7 +130,7 @@ $content
 変換後の文語テキストのみを出力してください。"
     
     # Geminiで変換
-    if gemini -p "$prompt" > "$chunk_output" 2>> "$LOG_FILE"; then
+    if gemini_wrapper "$prompt" "$chunk_output"; then
         return 0
     else
         return 1
