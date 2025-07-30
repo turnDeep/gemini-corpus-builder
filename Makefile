@@ -1,4 +1,4 @@
-.PHONY: setup convert validate clean stats help
+.PHONY: setup convert validate clean stats help consistency test
 
 # デフォルトタスク
 default: help
@@ -7,7 +7,8 @@ default: help
 help:
 	@echo "Gemini Corpus Builder コマンド:"
 	@echo "  make setup      - 初期セットアップ"
-	@echo "  make convert    - 口語→文語変換の実行"
+	@echo "  make convert    - 口語→文語変換の実行（基本）"
+	@echo "  make consistency - 整合性保証付き変換（推奨）"
 	@echo "  make validate   - 変換結果の検証"
 	@echo "  make stats      - 変換統計の表示"
 	@echo "  make clean      - 出力ファイルのクリア"
@@ -49,6 +50,12 @@ stats:
 clean:
 	@echo "出力ファイルをクリアしますか？ [y/N]"
 	@read ans && [ $${ans:-N} = y ] && rm -rf output/* logs/* || echo "キャンセルしました"
+
+# 整合性保証付き変換
+consistency:
+	@echo "整合性保証付き変換を開始します..."
+	@chmod +x scripts/consistency_manager.sh
+	@./scripts/consistency_manager.sh
 
 # テスト実行
 test:
