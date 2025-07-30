@@ -4,7 +4,7 @@
 
 ```bash
 # ディレクトリ作成
-mkdir -p gemini-corpus-builder/{input,output,logs,scripts,.gemini/templates,test/{input,output},.devcontainer,docs}
+mkdir -p gemini-corpus-builder/{input,output,logs,scripts,.gemini/templates,test/{input,output},.devcontainer,docs,consistency_work}
 
 # .gitkeepファイルの作成（空ディレクトリをGitで管理するため）
 touch gemini-corpus-builder/input/.gitkeep
@@ -13,6 +13,7 @@ touch gemini-corpus-builder/logs/.gitkeep
 touch gemini-corpus-builder/test/input/.gitkeep
 touch gemini-corpus-builder/test/output/.gitkeep
 touch gemini-corpus-builder/.gemini/templates/.gitkeep
+touch gemini-corpus-builder/consistency_work/.gitkeep
 
 # スクリプトの作成と実行権限付与
 cd gemini-corpus-builder
@@ -49,10 +50,18 @@ gemini-corpus-builder/
 │
 ├── scripts/                     # 処理スクリプト
 │   ├── batch_convert.sh        # バッチ変換
+│   ├── consistency_manager.sh  # 整合性管理
 │   ├── validate_output.sh      # 検証スクリプト
 │   ├── convert_single.sh       # 単一ファイル変換
 │   ├── show_stats.sh          # 統計表示
 │   └── config.sh              # 共通設定
+│
+├── consistency_work/            # 整合性管理作業用
+│   ├── .gitkeep
+│   ├── global_dictionary.json  # (自動生成)
+│   ├── document_graph.json     # (自動生成)
+│   ├── clusters.json          # (自動生成)
+│   └── consistency_rules.json  # (自動生成)
 │
 ├── test/                        # テスト用
 │   ├── input/                  # テスト入力
@@ -108,6 +117,13 @@ find output -name "*.txt" -exec wc -c {} \; | awk '{sum+=$1; files++} END {print
 echo ""
 echo "メタデータ付与率:"
 grep -l "\[文書情報\]" output/*.txt 2>/dev/null | wc -l | awk -v total=$(find output -name "*.txt" | wc -l) '{print ($1/total)*100 "%"}'
+
+# 整合性統計
+if [ -f consistency_work/consistency_report.json ]; then
+    echo ""
+    echo "整合性スコア:"
+    cat consistency_work/consistency_report.json | grep -o '"overall_score":[0-9.]*' | cut -d: -f2
+fi
 
 # 処理時間統計
 if [ -f logs/conversion_*.log ]; then
