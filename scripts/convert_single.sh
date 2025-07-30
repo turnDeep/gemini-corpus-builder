@@ -14,9 +14,8 @@ CONTENT=$(cat "$INPUT_FILE")
 
 # Geminiで変換
 gemini -p "以下の口語テキストを文語形式に変換し、RAG用に最適化してください。
-write-fileツールを使用して結果を「$OUTPUT_FILE」に自動保存してください。
 
 入力テキスト:
-$CONTENT"
+$CONTENT" > "$OUTPUT_FILE"
 
 echo "変換完了: $OUTPUT_FILE"

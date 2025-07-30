@@ -57,14 +57,12 @@ echo -e "${YELLOW}処理対象: $total_files ファイル${NC}"
 # Geminiプロンプトテンプレート
 PROMPT_TEMPLATE='以下の口語テキストを文語形式に変換し、RAG用のコーパスとして最適化してください。
 
-入力ファイル: INPUT_FILE
-出力ファイル: OUTPUT_FILE
-
 変換時は以下を実行してください：
 1. 口語表現を適切な文語表現に変換
 2. RAG検索に適した構造化
 3. メタデータの自動付与
-4. write-fileツールを使用して結果を自動保存（確認不要）
+
+生成された文語体のテキストのみを出力してください。追加の説明や前置きは不要です。
 
 入力テキスト:
 INPUT_CONTENT'
@@ -100,15 +98,18 @@ for ((batch=0; batch<batch_count; batch++)); do
             content=$(cat "$input_file")
             
             # プロンプトの生成
-            prompt=${PROMPT_TEMPLATE//INPUT_FILE/$input_file}
-            prompt=${prompt//OUTPUT_FILE/$output_file}
-            prompt=${prompt//INPUT_CONTENT/$content}
+            prompt=${PROMPT_TEMPLATE//INPUT_CONTENT/"$content"}
             
             # Geminiで変換実行
-            if gemini -p "$prompt" >> "$LOG_FILE" 2>&1; then
-                log "成功: $filename"
+            if gemini -p "$prompt" > "$output_file" 2>> "$LOG_FILE"; then
+                if [ -s "$output_file" ]; then
+                    log "成功: $filename"
+                else
+                    log "エラー: $filename (出力ファイルが空です)"
+                    ((errors++))
+                fi
             else
-                log "エラー: $filename"
+                log "エラー: $filename (geminiコマンド失敗)"
                 ((errors++))
             fi
         else
