@@ -18,7 +18,6 @@ help:
 setup:
 	@echo "環境をセットアップしています..."
 	mkdir -p input output logs .gemini/templates
-	chmod +x scripts/*.sh
 	@echo "Gemini CLIがインストールされていることを確認してください："
 	@echo "  npm install -g @google/gemini-cli"
 	@echo ""
@@ -30,12 +29,12 @@ setup:
 # 変換実行
 convert:
 	@echo "口語→文語変換を開始します..."
-	@./scripts/batch_convert.sh
+	@sh scripts/batch_convert.sh
 
 # 検証
 validate:
 	@echo "変換結果を検証しています..."
-	@./scripts/validate_output.sh
+	@sh scripts/validate_output.sh
 
 # 統計表示
 stats:
@@ -44,7 +43,7 @@ stats:
 	@echo "出力ファイル数: $$(find output -name "*.txt" | wc -l)"
 	@echo "エラー数: $$(grep -c "ERROR" logs/conversion.log 2>/dev/null || echo 0)"
 	@echo ""
-	@./scripts/show_stats.sh
+	@sh scripts/show_stats.sh
 
 # クリーンアップ
 clean:
@@ -54,8 +53,7 @@ clean:
 # 整合性保証付き変換
 consistency:
 	@echo "整合性保証付き変換を開始します..."
-	@chmod +x scripts/consistency_manager.sh
-	@./scripts/consistency_manager.sh
+	@sh scripts/consistency_manager.sh
 
 # テスト実行
 test:
@@ -63,7 +61,7 @@ test:
 	@mkdir -p test/input test/output
 	@echo "これはテストです。まあ、そんな感じかな。" > test/input/test1.txt
 	@echo "昨日さ、友達と会ったんだけど、すごく楽しかったよ。" > test/input/test2.txt
-	@./scripts/convert_single.sh test/input/test1.txt test/output/test1.txt
+	@sh scripts/convert_single.sh test/input/test1.txt test/output/test1.txt
 	@echo ""
 	@echo "変換結果："
 	@echo "--- 入力 ---"
