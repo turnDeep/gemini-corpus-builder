@@ -1,0 +1,54 @@
+{
+  "theme": "dark",
+  "model": "gemini-2.5-pro",
+  "tools": {
+    "enabled": [
+      "read-file",
+      "write-file",
+      "read-folder",
+      "search-file-content",
+      "find-files"
+    ],
+    "disabled": [
+      "shell",
+      "web-fetch",
+      "web-search"
+    ]
+  },
+  "memory": {
+    "maxContextLength": 100000,
+    "autoCompact": true,
+    "compactThreshold": 0.8
+  },
+  "fileOperations": {
+    "autoConfirm": true,
+    "createDirectories": true,
+    "overwriteExisting": true,
+    "backupBeforeOverwrite": false
+  },
+  "conversion": {
+    "batchSize": 50,
+    "parallelProcessing": false,
+    "retryOnError": true,
+    "maxRetries": 3
+  },
+  "outputFormat": {
+    "includeMetadata": true,
+    "metadataPosition": "bottom",
+    "preserveOriginalAsComment": false,
+    "lineEnding": "unix"
+  },
+  "logging": {
+    "level": "info",
+    "logFile": "logs/gemini.log",
+    "includeTimestamp": true
+  },
+  "contextFiles": {
+    "autoInclude": [
+      ".gemini/GEMINI.md",
+      ".gemini/templates/"
+    ],
+    "extensions": [".txt", ".md"],
+    "maxFileSize": "10MB"
+  }
+}
