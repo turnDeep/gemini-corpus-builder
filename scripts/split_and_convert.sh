@@ -2,24 +2,16 @@
 
 # Gemini Corpus Builder - 分割変換共通関数
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
+source "$SCRIPT_DIR/utils.sh"
+
 # 設定
 TEMP_DIR="temp_chunks"
 MAX_FILE_SIZE=${MAX_FILE_SIZE:-50000}  # 50KB以上を大きいファイルとする
 CHUNK_SIZE=${CHUNK_SIZE:-30000}        # 30KB単位で分割
 CHUNK_DELAY=${CHUNK_DELAY:-1}          # チャンク間の遅延
 
-# ファイルサイズをチェック
-check_file_size() {
-    local file=$1
-    stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null
-}
-
-# ファイルが大容量かチェック
-is_large_file() {
-    local file=$1
-    local size=$(check_file_size "$file")
-    [ "$size" -gt "$MAX_FILE_SIZE" ]
-}
 
 # テキストを段落で分割
 split_by_paragraphs() {

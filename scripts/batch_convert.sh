@@ -4,6 +4,8 @@
 
 # 共通関数を読み込み
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
+source "$SCRIPT_DIR/utils.sh"
 source "$SCRIPT_DIR/split_and_convert.sh"
 
 # 設定
@@ -68,7 +70,7 @@ convert_file_auto() {
 $content"
         
         # Geminiで変換実行
-        if gemini -p "$prompt" > "$output_file" 2>> "$LOG_FILE"; then
+        if gemini_wrapper "$prompt" "$output_file"; then
             if [ -s "$output_file" ]; then
                 log "成功: $filename"
                 return 0
@@ -116,6 +118,9 @@ if [ $large_count -gt 0 ]; then
     echo -e "${BLUE}  ※ ${large_count}個の大容量ファイルは自動的に分割処理されます${NC}"
 fi
 echo ""
+
+# 変換時間の予測を表示
+estimate_conversion_time "simple" "${input_files[@]}"
 
 # バッチ処理
 batch_count=$(( (total_files + BATCH_SIZE - 1) / BATCH_SIZE ))
