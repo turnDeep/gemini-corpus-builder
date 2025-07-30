@@ -27,38 +27,58 @@ split_by_paragraphs() {
     local output_prefix=$2
     local max_chunk_size=$3
     
-    # 段落で分割（空行を区切りとする）
+    # 段落や長大な行を考慮して、より堅牢な分割を実行
     awk -v prefix="$output_prefix" -v max_size="$max_chunk_size" '
+    function new_chunk() {
+        if (output_file != "") close(output_file);
+        chunk_num++;
+        output_file = prefix "_chunk_" chunk_num ".txt";
+        current_size = 0;
+    }
+
     BEGIN {
-        chunk_num = 1
-        current_size = 0
-        output_file = prefix "_chunk_" chunk_num ".txt"
+        chunk_num = 0;
+        output_file = "";
+        new_chunk();
     }
     {
-        # 空行は段落の区切り
         if (NF == 0) {
-            if (current_size > 0) {
-                print "" >> output_file
+            if (current_size > 0 && current_size < max_size) {
+                print "" >> output_file;
+                current_size++;
             }
-            next
+            next;
+        }
+
+        line = $0;
+        while (length(line) > 0) {
+            if (current_size >= max_size) {
+                new_chunk();
+            }
+
+            remaining_space = max_size - current_size;
+            piece = substr(line, 1, remaining_space);
+
+            if (length(piece) == 0) {
+                line = ""; # Should not happen, but as a safeguard
+                continue;
+            }
+
+            printf "%s", piece >> output_file;
+            current_size += length(piece);
+
+            line = substr(line, length(piece) + 1);
         }
         
-        # 現在の行のサイズ
-        line_size = length($0) + 1
-        
-        # チャンクサイズを超える場合は新しいチャンクへ
-        if (current_size + line_size > max_size && current_size > 0) {
-            close(output_file)
-            chunk_num++
-            output_file = prefix "_chunk_" chunk_num ".txt"
-            current_size = 0
+        # Add a newline after processing the original line, mimicking `print`
+        if (current_size > 0 && current_size < max_size) {
+            print "" >> output_file;
+            current_size++;
         }
-        
-        print $0 >> output_file
-        current_size += line_size
     }
     END {
-        print chunk_num
+        if (output_file != "") close(output_file);
+        print chunk_num;
     }' "$input_file"
 }
 
