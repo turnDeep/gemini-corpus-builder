@@ -24,7 +24,7 @@ log() {
 # 初期化
 init_consistency_system() {
     echo -e "${BLUE}=== 整合性管理システム初期化 ===${NC}"
-    mkdir -p "$WORK_DIR"
+    mkdir -p "$WORK_DIR" logs output
     
     # グローバル辞書の初期化
     if [ ! -f "$DICT_FILE" ]; then
@@ -48,15 +48,13 @@ analyze_documents() {
 1. inputディレクトリ内の全テキストファイルを分析
 2. 内容の類似性に基づいてクラスタリング
 3. 各クラスタの特徴を抽出
-4. 結果を$CLUSTER_FILEに保存
+4. 結果をJSON形式で出力
 
 分析観点：
 - トピックの類似性
 - 文体の特徴
 - 使用語彙の傾向
-- 時系列的な関連性
-
-write-fileツールを使用して自動的に結果を保存してください。" >> "$LOG_FILE" 2>&1
+- 時系列的な関連性" > "$CLUSTER_FILE" 2>> "$LOG_FILE"
     
     log "文書分析完了"
 }
@@ -75,7 +73,7 @@ build_global_dictionary() {
 4. 既存の辞書データとマージ：
 $existing_dict
 
-5. 更新された辞書を$DICT_FILEに保存
+5. 更新された辞書をJSON形式で出力
 
 辞書形式：
 {
@@ -91,9 +89,7 @@ $existing_dict
     \"カジュアル\": \"フォーマル\",
     ...
   }
-}
-
-write-fileツールで自動保存してください。" >> "$LOG_FILE" 2>&1
+}" > "$DICT_FILE" 2>> "$LOG_FILE"
     
     log "グローバル辞書構築完了"
 }
@@ -106,7 +102,7 @@ analyze_document_relations() {
 1. 全文書間の参照関係を分析
 2. 時系列的な依存関係を特定
 3. トピックの継続性を確認
-4. ドキュメントグラフを構築して$GRAPH_FILEに保存
+4. ドキュメントグラフを構築してJSON形式で出力
 
 グラフ形式：
 {
@@ -118,9 +114,7 @@ analyze_document_relations() {
     {\"source\": \"doc1.txt\", \"target\": \"doc2.txt\", \"type\": \"reference\", \"weight\": 0.8},
     ...
   ]
-}
-
-write-fileツールで自動保存してください。" >> "$LOG_FILE" 2>&1
+}" > "$GRAPH_FILE" 2>> "$LOG_FILE"
     
     log "文書間関係分析完了"
 }
@@ -134,7 +128,7 @@ generate_consistency_rules() {
     dictionary=$(cat "$DICT_FILE" 2>/dev/null)
     graph=$(cat "$GRAPH_FILE" 2>/dev/null)
     
-    gemini -p "以下の分析結果を基に、整合性チェックルールを生成してください：
+    gemini -p "以下の分析結果を基に、整合性チェックルールをJSON形式で生成してください：
 
 クラスタ情報：
 $clusters
@@ -149,10 +143,7 @@ $graph
 1. クラスタごとの変換ルール
 2. 用語統一性のチェックリスト
 3. 文体一貫性の基準
-4. 参照整合性の検証方法
-
-結果を$WORK_DIR/consistency_rules.jsonに保存してください。
-write-fileツールで自動保存してください。" >> "$LOG_FILE" 2>&1
+4. 参照整合性の検証方法" > "$WORK_DIR/consistency_rules.json" 2>> "$LOG_FILE"
     
     log "整合性チェックルール生成完了"
 }
@@ -160,31 +151,66 @@ write-fileツールで自動保存してください。" >> "$LOG_FILE" 2>&1
 # Phase 5: バッチ変換（整合性考慮）
 convert_with_consistency() {
     echo -e "${BLUE}Phase 5: 整合性を考慮したバッチ変換${NC}"
-    
-    # ルールとリソースを読み込み
-    rules=$(cat "$WORK_DIR/consistency_rules.json" 2>/dev/null)
-    dictionary=$(cat "$DICT_FILE" 2>/dev/null)
-    
-    # クラスタごとに処理
-    echo "クラスタベースの変換を開始..."
-    
-    gemini -p "以下の整合性リソースを使用して、inputディレクトリの全ファイルを変換してください：
 
-整合性ルール：
+    # ルールとリソースを読み込み
+    local rules
+    rules=$(cat "$WORK_DIR/consistency_rules.json" 2>/dev/null)
+    local dictionary
+    dictionary=$(cat "$DICT_FILE" 2>/dev/null)
+
+    # 入力ファイルの取得
+    mapfile -t input_files < <(find "input" -name "*.txt" -type f | sort)
+    local total_files=${#input_files[@]}
+
+    if [ "$total_files" -eq 0 ]; then
+        log "変換対象のファイルが見つかりません。"
+        echo -e "${YELLOW}変換対象のファイルがinputディレクトリに見つかりません。${NC}"
+        return
+    fi
+
+    log "整合性考慮のバッチ変換を開始します。対象ファイル数: $total_files"
+    echo "クラスタベースの変換を開始... ($total_files ファイル)"
+
+    local processed=0
+    for input_file in "${input_files[@]}"; do
+        local filename
+        filename=$(basename "$input_file")
+        local output_file="output/$filename"
+
+        ((processed++))
+        echo "  ($processed/$total_files) $filename を変換中..."
+
+        local content
+        content=$(cat "$input_file")
+
+        # 各ファイルに対してGeminiで変換
+        gemini -p "以下の整合性リソースと入力テキストを使用して、文語形式のテキストを生成してください。
+
+## 整合性ルール
 $rules
 
-グローバル辞書：
+## グローバル辞書
 $dictionary
 
-変換要件：
-1. クラスタごとに適切な変換ルールを適用
-2. グローバル辞書を使用して用語を統一
-3. 文書間の参照関係を維持
-4. 各ファイルにメタデータを付与（クラスタID、関連文書など）
-5. outputディレクトリに自動保存
+## 入力テキスト
+\`\`\`
+$content
+\`\`\`
 
-処理状況をログに記録しながら、write-fileツールで各ファイルを自動的に保存してください。" >> "$LOG_FILE" 2>&1
-    
+## 指示
+1. 上記のルールと辞書を厳密に適用してください。
+2. テキスト全体を、RAGでの検索に適した、高品質な文語体の文章に変換してください。
+3. 元のテキストの意図や情報を保持してください。
+4. 生成された文語体のテキストのみを出力してください。追加の説明や前置きは不要です。" > "$output_file" 2>> "$LOG_FILE"
+
+        if [ $? -eq 0 ]; then
+            log "成功: $filename -> $output_file"
+        else
+            log "エラー: $filename の変換に失敗しました"
+            # エラーが発生しても処理を続ける
+        fi
+    done
+
     log "整合性考慮のバッチ変換完了"
 }
 
@@ -210,8 +236,8 @@ verify_consistency() {
    - 必須項目の確認
    - 値の妥当性検証
 
-検証結果を$WORK_DIR/consistency_report.jsonに保存してください。
-問題のあるファイルはリストアップし、修正提案も含めてください。" >> "$LOG_FILE" 2>&1
+検証結果をJSON形式で$WORK_DIR/consistency_report.jsonに出力してください。
+問題のあるファイルはリストアップし、修正提案も含めてください。" > "$WORK_DIR/consistency_report.json" 2>> "$LOG_FILE"
     
     log "整合性検証完了"
 }
@@ -220,22 +246,33 @@ verify_consistency() {
 auto_correct_inconsistencies() {
     echo -e "${BLUE}Phase 7: 不整合の自動修正${NC}"
     
+    local report
     report=$(cat "$WORK_DIR/consistency_report.json" 2>/dev/null)
     
-    if [ -n "$report" ]; then
-        gemini -p "整合性検証レポートに基づいて、以下の自動修正を実行してください：
+    # レポートが存在し、内容が空でないことを確認
+    if [ -s "$WORK_DIR/consistency_report.json" ]; then
+        echo "検証レポートに基づいて修正案を生成します..."
+        gemini -p "整合性検証レポートに基づいて、レポートにリストされている各ファイルの問題点を修正した完全なテキストを生成してください。
 
-検証レポート：
+## 検証レポート
 $report
 
-修正内容：
-1. 用語の不統一を修正
-2. 文体の不整合を調整
-3. 参照エラーを解決
-4. メタデータの補完
+## 指示
+1. レポートに記載されている問題点（用語の不統一、文体の不整合など）をすべて修正してください。
+2. 各ファイルについて、修正後の完全なテキストのみを出力してください。
+3. ファイルごとに、どのファイルに対する修正案であるか明確に示してください。
+   例:
+   --- START: path/to/file1.txt ---
+   (修正後のテキスト)
+   --- END: path/to/file1.txt ---
 
-修正したファイルはoutputディレクトリに上書き保存してください。
-修正ログを$WORK_DIR/corrections.logに記録してください。" >> "$LOG_FILE" 2>&1
+4. 修正ログを$WORK_DIR/corrections.logに記録してください。" > "$WORK_DIR/corrections.log" 2>> "$LOG_FILE"
+
+        log "修正案の生成完了。詳細は $WORK_DIR/corrections.log を確認してください。"
+        echo "修正案が $WORK_DIR/corrections.log に生成されました。手動での確認と適用を推奨します。"
+    else
+        log "自動修正はスキップされました（レポートが存在しないか空です）。"
+        echo "整合性レポートが存在しないか、問題が検出されなかったため、自動修正はスキップされました。"
     fi
     
     log "自動修正完了"
