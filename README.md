@@ -11,6 +11,7 @@
 - 🤖 **完全自動化**: 人間の確認なしで全ファイルを処理
 - 📊 **進捗管理**: バッチ処理の進捗状況をリアルタイムで確認
 - 🔍 **品質チェック**: 変換結果の一貫性を自動検証
+- 🔄 **整合性保証**: 大規模コーパス全体の用語・文体の統一性を維持
 
 ## 🚀 クイックスタート
 
@@ -37,12 +38,32 @@ cp .gemini/settings.json.sample ~/.gemini/settings.json
 # 入力ファイルを配置
 cp your-files/*.txt input/
 
-# 変換実行
+# 基本的な変換実行
 make convert
+
+# 整合性保証付き変換（推奨）
+make consistency
 
 # または個別実行
 ./scripts/batch_convert.sh
 ```
+
+### 5. 整合性管理（大規模処理向け）
+1000個以上のファイルを処理する場合は、整合性保証付き変換を推奨：
+
+```bash
+# 整合性保証付き変換（7フェーズ処理）
+make consistency
+```
+
+このモードでは以下が実行されます：
+- 文書クラスタリング
+- グローバル辞書構築
+- 文書間関係分析
+- 整合性ルール生成
+- ルールベース変換
+- 整合性検証
+- 自動修正
 
 ## 📁 プロジェクト構造
 
@@ -54,9 +75,14 @@ gemini-corpus-builder/
 │   ├── 📜 GEMINI.md       # Gemini への指示書
 │   └── 📜 settings.json   # Gemini CLI設定
 ├── 📁 scripts/            # 処理スクリプト
-│   ├── 📜 batch_convert.sh    # バッチ変換スクリプト
-│   ├── 📜 validate_output.sh  # 品質検証スクリプト
-│   └── 📜 progress_monitor.sh # 進捗モニター
+│   ├── 📜 batch_convert.sh        # バッチ変換スクリプト
+│   ├── 📜 consistency_manager.sh  # 整合性管理スクリプト
+│   ├── 📜 validate_output.sh      # 品質検証スクリプト
+│   └── 📜 progress_monitor.sh     # 進捗モニター
+├── 📁 consistency_work/   # 整合性管理作業ディレクトリ
+│   ├── 📜 global_dictionary.json  # グローバル辞書
+│   ├── 📜 document_graph.json     # 文書関係グラフ
+│   └── 📜 clusters.json           # クラスタ情報
 └── 📁 logs/               # 処理ログ
 ```
 
