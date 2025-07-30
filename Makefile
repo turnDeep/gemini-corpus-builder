@@ -29,12 +29,12 @@ setup:
 # 変換実行
 convert:
 	@echo "口語→文語変換を開始します..."
-	@sh scripts/batch_convert.sh
+	@bash scripts/batch_convert.sh
 
 # 検証
 validate:
 	@echo "変換結果を検証しています..."
-	@sh scripts/validate_output.sh
+	@bash scripts/validate_output.sh
 
 # 統計表示
 stats:
@@ -43,7 +43,7 @@ stats:
 	@echo "出力ファイル数: $$(find output -name "*.txt" | wc -l)"
 	@echo "エラー数: $$(grep -c "ERROR" logs/conversion.log 2>/dev/null || echo 0)"
 	@echo ""
-	@sh scripts/show_stats.sh
+	@bash scripts/show_stats.sh
 
 # クリーンアップ
 clean:
@@ -53,7 +53,7 @@ clean:
 # 整合性保証付き変換
 consistency:
 	@echo "整合性保証付き変換を開始します..."
-	@sh scripts/consistency_manager.sh
+	@bash scripts/consistency_manager.sh
 
 # テスト実行
 test:
@@ -61,7 +61,7 @@ test:
 	@mkdir -p test/input test/output
 	@echo "これはテストです。まあ、そんな感じかな。" > test/input/test1.txt
 	@echo "昨日さ、友達と会ったんだけど、すごく楽しかったよ。" > test/input/test2.txt
-	@sh scripts/convert_single.sh test/input/test1.txt test/output/test1.txt
+	@bash scripts/convert_single.sh test/input/test1.txt test/output/test1.txt
 	@echo ""
 	@echo "変換結果："
 	@echo "--- 入力 ---"
