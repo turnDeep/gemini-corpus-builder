@@ -34,6 +34,95 @@ sanitize_filename() {
     echo "$1" | tr -d '/\0' | tr '[:space:][:punct:]' '_' | sed 's/__*/_/g' | sed 's/^_//;s/_$//'
 }
 
+# Geminiコマンドのラッパー関数（ロギング対応）
+gemini_wrapper() {
+    local prompt="$1"
+    local output_file="${2:-}" # 出力ファイルは任意
+
+    # LOG_LEVELがdebugの場合、プロンプトをログに出力
+    # config.shから読み込まれることを想定
+    if [ "${LOG_LEVEL}" == "debug" ]; then
+        log "--- Gemini Prompt ---
+$prompt
+---------------------"
+    fi
+
+    local response
+    # 2>>でエラーをログファイルにリダイレクトしつつ、STDOUTは変数にキャプチャ
+    if response=$(gemini -p "$prompt" 2>> "$LOG_FILE"); then
+        if [ "${LOG_LEVEL}" == "debug" ]; then
+            log "--- Gemini Response ---
+$response
+-----------------------"
+        fi
+
+        # 出力ファイルが指定されていれば書き込み、なければSTDOUTに出力
+        if [ -n "$output_file" ]; then
+            echo "$response" > "$output_file"
+        else
+            echo "$response"
+        fi
+        return 0
+    else
+        log "エラー: Geminiコマンドの実行に失敗しました。"
+        # レスポンス変数にエラーメッセージを入れておく（呼び出し元で利用可能）
+        response="GEMINI_COMMAND_FAILED"
+        return 1
+    fi
+}
+export -f gemini_wrapper
+
+# 変換時間の予測
+estimate_conversion_time() {
+    local files=("$@")
+    local total_files=${#files[@]}
+    local total_chunks=0
+    local normal_files=0
+    local large_files=0
+
+    # 平均API時間（秒）- 変換と要約生成の2回呼び出しを考慮
+    local avg_conversion_api_time=8
+    local avg_summary_api_time=3
+
+    # ファイルを分析してチャンク数を計算
+    for file in "${files[@]}"; do
+        if is_large_file "$file";
+        then
+            ((large_files++))
+            local size
+            size=$(check_file_size "$file")
+            # CHUNK_SIZEはsplit_and_convert.shから取得
+            # シェルスクリプトでは浮動小数点数計算が面倒なため、整数演算で切り上げを表現
+            local chunks=$(( (size + CHUNK_SIZE - 1) / CHUNK_SIZE ))
+            ((total_chunks += chunks))
+        else
+            ((normal_files++))
+        fi
+    done
+
+    # API遅延はconfig.shから取得。未設定の場合のデフォルト値。
+    local api_delay=${API_DELAY:-0.5}
+    local chunk_delay=${CHUNK_DELAY:-1}
+
+    # 時間計算
+    local normal_time_float=$(echo "$normal_files * ($avg_conversion_api_time + $avg_summary_api_time) + $normal_files * $api_delay" | bc)
+    local large_time_float=$(echo "$total_chunks * ($avg_conversion_api_time + $chunk_delay) + $large_files * $avg_summary_api_time" | bc)
+    local total_seconds_float=$(echo "$normal_time_float + $large_time_float" | bc)
+
+    # bcの結果を整数に変換
+    local total_seconds=${total_seconds_float%.*}
+
+    # 人間が読みやすい形式に変換
+    local minutes=$(( total_seconds / 60 ))
+    local seconds=$(( total_seconds % 60 ))
+
+    echo "---"
+    echo -e "${BLUE}予測変換時間: 約 ${minutes} 分 ${seconds} 秒${NC}"
+    echo "  (通常ファイル: $normal_files, 大容量ファイル: $large_files, 総チャンク数: $total_chunks)"
+    echo "  ※ これはあくまで目安です。ネットワークの状態やAPIの応答速度によって変動します。"
+    echo "---"
+}
+
 # 変換されたテキストからファイル名を生成する関数
 generate_filename_from_content() {
     local content_file=$1
@@ -43,11 +132,13 @@ generate_filename_from_content() {
     local truncated_content=$(head -c $max_chars "$content_file")
 
     # Geminiに要約を依頼
-    local summary=$(gemini -p "以下のテキスト内容を、ファイル名として適切な30文字程度の日本語の要約にしてください。句読点や特殊文字は含めず、簡潔な表現でお願いします。要約のみを出力してください。
+    local prompt="以下のテキスト内容を、ファイル名として適切な30文字程度の日本語の要約にしてください。句読点や特殊文字は含めず、簡潔な表現でお願いします。要約のみを出力してください。
 
 テキスト：
 $truncated_content
-")
+"
+    local summary
+    summary=$(gemini_wrapper "$prompt")
 
     # サニタイズして返す
     sanitize_filename "$summary"
@@ -89,7 +180,7 @@ analyze_documents() {
     fi
     
     # Geminiで文書分析を実行
-    gemini -p "以下のタスクを実行してください：
+    local prompt="以下のタスクを実行してください：
 1. inputディレクトリ内の全テキストファイルを分析
 2. 内容の類似性に基づいてクラスタリング
 3. 各クラスタの特徴を抽出
@@ -101,7 +192,8 @@ analyze_documents() {
 - 使用語彙の傾向
 - 時系列的な関連性
 
-注意：大きなファイルは部分的にサンプリングして分析してください。" > "$CLUSTER_FILE" 2>> "$LOG_FILE"
+注意：大きなファイルは部分的にサンプリングして分析してください。"
+    gemini_wrapper "$prompt" "$CLUSTER_FILE"
     
     log "文書分析完了"
 }
@@ -113,7 +205,7 @@ build_global_dictionary() {
     # 既存の辞書を読み込み
     existing_dict=$(cat "$DICT_FILE" 2>/dev/null || echo '{}')
     
-    gemini -p "以下のタスクを実行してください：
+    local prompt="以下のタスクを実行してください：
 1. inputディレクトリの全ファイルから頻出用語を抽出
 2. 口語表現と対応する文語表現のマッピングを作成
 3. 固有名詞の統一表記を決定
@@ -138,7 +230,8 @@ $existing_dict
   }
 }
 
-注意：大きなファイルは効率的にサンプリングして処理してください。" > "$DICT_FILE" 2>> "$LOG_FILE"
+注意：大きなファイルは効率的にサンプリングして処理してください。"
+    gemini_wrapper "$prompt" "$DICT_FILE"
     
     log "グローバル辞書構築完了"
 }
@@ -147,7 +240,7 @@ $existing_dict
 analyze_document_relations() {
     echo -e "${BLUE}Phase 3: 文書間関係の分析${NC}"
     
-    gemini -p "以下のタスクを実行してください：
+    local prompt="以下のタスクを実行してください：
 1. 全文書間の参照関係を分析
 2. 時系列的な依存関係を特定
 3. トピックの継続性を確認
@@ -165,7 +258,8 @@ analyze_document_relations() {
   ]
 }
 
-注意：大きなファイルは「is_large\": true」とマークしてください。" > "$GRAPH_FILE" 2>> "$LOG_FILE"
+注意：大きなファイルは「is_large\": true」とマークしてください。"
+    gemini_wrapper "$prompt" "$GRAPH_FILE"
     
     log "文書間関係分析完了"
 }
@@ -179,7 +273,7 @@ generate_consistency_rules() {
     dictionary=$(cat "$DICT_FILE" 2>/dev/null)
     graph=$(cat "$GRAPH_FILE" 2>/dev/null)
     
-    gemini -p "以下の分析結果を基に、整合性チェックルールをJSON形式で生成してください：
+    local prompt="以下の分析結果を基に、整合性チェックルールをJSON形式で生成してください：
 
 クラスタ情報：
 $clusters
@@ -195,7 +289,8 @@ $graph
 2. 用語統一性のチェックリスト
 3. 文体一貫性の基準
 4. 参照整合性の検証方法
-5. 大容量ファイルの特別処理ルール" > "$WORK_DIR/consistency_rules.json" 2>> "$LOG_FILE"
+5. 大容量ファイルの特別処理ルール"
+    gemini_wrapper "$prompt" "$WORK_DIR/consistency_rules.json"
     
     log "整合性チェックルール生成完了"
 }
@@ -217,6 +312,9 @@ convert_with_consistency() {
         echo -e "${YELLOW}変換対象のファイルがinputディレクトリに見つかりません。${NC}"
         return
     fi
+
+    # 変換時間の予測を表示
+    estimate_conversion_time "${input_files[@]}"
 
     # 大容量ファイルのカウント
     local large_count=0
@@ -269,7 +367,7 @@ convert_with_consistency() {
             local content=$(cat "$input_file")
 
             # 各ファイルに対してGeminiで変換
-            if gemini -p "以下の整合性リソースと入力テキストを使用して、文語形式のテキストを生成してください。
+            local prompt="以下の整合性リソースと入力テキストを使用して、文語形式のテキストを生成してください。
 
 ## 整合性ルール
 $rules
@@ -286,7 +384,8 @@ $content
 1. 上記のルールと辞書を厳密に適用してください。
 2. テキスト全体を、RAGでの検索に適した、高品質な文語体の文章に変換してください。
 3. 元のテキストの意図や情報を保持してください。
-4. 生成された文語体のテキストのみを出力してください。追加の説明や前置きは不要です。" > "$temp_output_file" 2>> "$LOG_FILE"; then
+4. 生成された文語体のテキストのみを出力してください。追加の説明や前置きは不要です。"
+            if gemini_wrapper "$prompt" "$temp_output_file"; then
                 log "成功: $filename"
                 conversion_success=true
             else
@@ -338,7 +437,7 @@ $content
 verify_consistency() {
     echo -e "${BLUE}Phase 6: 整合性検証${NC}"
     
-    gemini -p "outputディレクトリの全変換結果について、以下の整合性検証を実行してください：
+    local prompt="outputディレクトリの全変換結果について、以下の整合性検証を実行してください：
 
 1. 用語の一貫性チェック
    - グローバル辞書との照合
@@ -361,7 +460,8 @@ verify_consistency() {
    - 分割による情報欠落の有無
 
 検証結果をJSON形式で$WORK_DIR/consistency_report.jsonに出力してください。
-問題のあるファイルはリストアップし、修正提案も含めてください。" > "$WORK_DIR/consistency_report.json" 2>> "$LOG_FILE"
+問題のあるファイルはリストアップし、修正提案も含めてください。"
+    gemini_wrapper "$prompt" "$WORK_DIR/consistency_report.json"
     
     log "整合性検証完了"
 }
@@ -375,7 +475,7 @@ auto_correct_inconsistencies() {
     # レポートが存在し、内容が空でないことを確認
     if [ -s "$WORK_DIR/consistency_report.json" ]; then
         echo "検証レポートに基づいて修正案を生成します..."
-        gemini -p "整合性検証レポートに基づいて、レポートにリストされている各ファイルの問題点を修正した完全なテキストを生成してください。
+        local prompt="整合性検証レポートに基づいて、レポートにリストされている各ファイルの問題点を修正した完全なテキストを生成してください。
 
 ## 検証レポート
 $report
@@ -390,7 +490,8 @@ $report
    --- END: path/to/file1.txt ---
 
 4. 分割処理されたファイルの場合は、全体の整合性を考慮して修正してください。
-5. 修正ログを$WORK_DIR/corrections.logに記録してください。" > "$WORK_DIR/corrections.log" 2>> "$LOG_FILE"
+5. 修正ログを$WORK_DIR/corrections.logに記録してください。"
+        gemini_wrapper "$prompt" "$WORK_DIR/corrections.log"
 
         log "修正案の生成完了。詳細は $WORK_DIR/corrections.log を確認してください。"
         echo "修正案が $WORK_DIR/corrections.log に生成されました。手動での確認と適用を推奨します。"
@@ -430,7 +531,7 @@ main() {
         echo "整合性レポートが生成されました: $WORK_DIR/consistency_report.json"
         
         # 簡易サマリー表示
-        gemini -p "以下の整合性レポートから、重要な統計情報のサマリーを表示してください：
+        local prompt="以下の整合性レポートから、重要な統計情報のサマリーを表示してください：
 $(cat $WORK_DIR/consistency_report.json)
 
 表示項目：
@@ -438,7 +539,8 @@ $(cat $WORK_DIR/consistency_report.json)
 - 主な問題点
 - 修正済み項目数
 - 分割処理ファイルの統計
-- 推奨事項" 2>/dev/null
+- 推奨事項"
+        gemini_wrapper "$prompt" 2>/dev/null
     fi
     
     log "全処理完了"
