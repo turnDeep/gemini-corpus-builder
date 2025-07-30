@@ -1,6 +1,10 @@
 #!/bin/bash
 
-# Gemini Corpus Builder - 整合性管理スクリプト
+# Gemini Corpus Builder - 整合性管理スクリプト（自動分割対応版）
+
+# 共通関数を読み込み
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/split_and_convert.sh"
 
 # 設定
 WORK_DIR="consistency_work"
@@ -43,6 +47,19 @@ init_consistency_system() {
 analyze_documents() {
     echo -e "${BLUE}Phase 1: 文書分析とクラスタリング${NC}"
     
+    # 大容量ファイルのチェック
+    local large_count=0
+    while IFS= read -r file; do
+        if is_large_file "$file"; then
+            ((large_count++))
+        fi
+    done < <(find "input" -name "*.txt" -type f)
+    
+    if [ $large_count -gt 0 ]; then
+        echo -e "${YELLOW}  ※ ${large_count}個の大容量ファイルが検出されました${NC}"
+        log "大容量ファイル数: $large_count"
+    fi
+    
     # Geminiで文書分析を実行
     gemini -p "以下のタスクを実行してください：
 1. inputディレクトリ内の全テキストファイルを分析
@@ -54,7 +71,9 @@ analyze_documents() {
 - トピックの類似性
 - 文体の特徴
 - 使用語彙の傾向
-- 時系列的な関連性" > "$CLUSTER_FILE" 2>> "$LOG_FILE"
+- 時系列的な関連性
+
+注意：大きなファイルは部分的にサンプリングして分析してください。" > "$CLUSTER_FILE" 2>> "$LOG_FILE"
     
     log "文書分析完了"
 }
@@ -89,7 +108,9 @@ $existing_dict
     \"カジュアル\": \"フォーマル\",
     ...
   }
-}" > "$DICT_FILE" 2>> "$LOG_FILE"
+}
+
+注意：大きなファイルは効率的にサンプリングして処理してください。" > "$DICT_FILE" 2>> "$LOG_FILE"
     
     log "グローバル辞書構築完了"
 }
@@ -107,14 +128,16 @@ analyze_document_relations() {
 グラフ形式：
 {
   \"nodes\": [
-    {\"id\": \"doc1.txt\", \"cluster\": 0, \"topics\": [...]},
+    {\"id\": \"doc1.txt\", \"cluster\": 0, \"topics\": [...], \"is_large\": false},
     ...
   ],
   \"edges\": [
     {\"source\": \"doc1.txt\", \"target\": \"doc2.txt\", \"type\": \"reference\", \"weight\": 0.8},
     ...
   ]
-}" > "$GRAPH_FILE" 2>> "$LOG_FILE"
+}
+
+注意：大きなファイルは「is_large\": true」とマークしてください。" > "$GRAPH_FILE" 2>> "$LOG_FILE"
     
     log "文書間関係分析完了"
 }
@@ -143,20 +166,19 @@ $graph
 1. クラスタごとの変換ルール
 2. 用語統一性のチェックリスト
 3. 文体一貫性の基準
-4. 参照整合性の検証方法" > "$WORK_DIR/consistency_rules.json" 2>> "$LOG_FILE"
+4. 参照整合性の検証方法
+5. 大容量ファイルの特別処理ルール" > "$WORK_DIR/consistency_rules.json" 2>> "$LOG_FILE"
     
     log "整合性チェックルール生成完了"
 }
 
-# Phase 5: バッチ変換（整合性考慮）
+# Phase 5: バッチ変換（整合性考慮・自動分割対応）
 convert_with_consistency() {
-    echo -e "${BLUE}Phase 5: 整合性を考慮したバッチ変換${NC}"
+    echo -e "${BLUE}Phase 5: 整合性を考慮したバッチ変換（自動分割対応）${NC}"
 
     # ルールとリソースを読み込み
-    local rules
-    rules=$(cat "$WORK_DIR/consistency_rules.json" 2>/dev/null)
-    local dictionary
-    dictionary=$(cat "$DICT_FILE" 2>/dev/null)
+    local rules=$(cat "$WORK_DIR/consistency_rules.json" 2>/dev/null)
+    local dictionary=$(cat "$DICT_FILE" 2>/dev/null)
 
     # 入力ファイルの取得
     mapfile -t input_files < <(find "input" -name "*.txt" -type f | sort)
@@ -168,23 +190,53 @@ convert_with_consistency() {
         return
     fi
 
-    log "整合性考慮のバッチ変換を開始します。対象ファイル数: $total_files"
+    # 大容量ファイルのカウント
+    local large_count=0
+    for file in "${input_files[@]}"; do
+        if is_large_file "$file"; then
+            ((large_count++))
+        fi
+    done
+
+    log "整合性考慮のバッチ変換を開始します。対象ファイル数: $total_files (うち大容量: $large_count)"
     echo "クラスタベースの変換を開始... ($total_files ファイル)"
+    if [ $large_count -gt 0 ]; then
+        echo -e "${BLUE}  ※ ${large_count}個の大容量ファイルは自動的に分割処理されます${NC}"
+    fi
 
     local processed=0
+    local errors=0
+    local split_processed=0
+    
     for input_file in "${input_files[@]}"; do
-        local filename
-        filename=$(basename "$input_file")
+        local filename=$(basename "$input_file")
         local output_file="output/$filename"
 
         ((processed++))
-        echo "  ($processed/$total_files) $filename を変換中..."
+        
+        # 大容量ファイルの場合
+        if is_large_file "$input_file"; then
+            ((split_processed++))
+            echo -e "${YELLOW}  ($processed/$total_files) [分割処理] $filename${NC}"
+            
+            # smart_convert_fileで自動分割処理
+            if smart_convert_file "$input_file" "$output_file" "$rules" "$dictionary" "log"; then
+                log "成功（分割処理）: $filename"
+            else
+                log "エラー（分割処理）: $filename"
+                ((errors++))
+            fi
+            
+            # 分割処理後は長めの休憩
+            sleep 2
+        else
+            # 通常サイズファイルの処理
+            echo "  ($processed/$total_files) $filename を変換中..."
+            
+            local content=$(cat "$input_file")
 
-        local content
-        content=$(cat "$input_file")
-
-        # 各ファイルに対してGeminiで変換
-        gemini -p "以下の整合性リソースと入力テキストを使用して、文語形式のテキストを生成してください。
+            # 各ファイルに対してGeminiで変換
+            gemini -p "以下の整合性リソースと入力テキストを使用して、文語形式のテキストを生成してください。
 
 ## 整合性ルール
 $rules
@@ -203,15 +255,28 @@ $content
 3. 元のテキストの意図や情報を保持してください。
 4. 生成された文語体のテキストのみを出力してください。追加の説明や前置きは不要です。" > "$output_file" 2>> "$LOG_FILE"
 
-        if [ $? -eq 0 ]; then
-            log "成功: $filename -> $output_file"
-        else
-            log "エラー: $filename の変換に失敗しました"
-            # エラーが発生しても処理を続ける
+            if [ $? -eq 0 ]; then
+                log "成功: $filename"
+            else
+                log "エラー: $filename の変換に失敗しました"
+                ((errors++))
+            fi
+            
+            # APIレート制限対策
+            sleep 0.5
         fi
     done
 
-    log "整合性考慮のバッチ変換完了"
+    # クリーンアップ
+    cleanup_temp_files
+
+    local success=$((processed - errors))
+    log "整合性考慮のバッチ変換完了 - 成功: $success, エラー: $errors, 分割処理: $split_processed"
+    echo ""
+    echo -e "${GREEN}変換完了${NC} - 成功: $success, エラー: $errors"
+    if [ $split_processed -gt 0 ]; then
+        echo -e "${BLUE}  分割処理: $split_processed ファイル${NC}"
+    fi
 }
 
 # Phase 6: 整合性検証
@@ -236,6 +301,10 @@ verify_consistency() {
    - 必須項目の確認
    - 値の妥当性検証
 
+5. 分割処理ファイルの整合性
+   - チャンク間の連続性
+   - 分割による情報欠落の有無
+
 検証結果をJSON形式で$WORK_DIR/consistency_report.jsonに出力してください。
 問題のあるファイルはリストアップし、修正提案も含めてください。" > "$WORK_DIR/consistency_report.json" 2>> "$LOG_FILE"
     
@@ -246,8 +315,7 @@ verify_consistency() {
 auto_correct_inconsistencies() {
     echo -e "${BLUE}Phase 7: 不整合の自動修正${NC}"
     
-    local report
-    report=$(cat "$WORK_DIR/consistency_report.json" 2>/dev/null)
+    local report=$(cat "$WORK_DIR/consistency_report.json" 2>/dev/null)
     
     # レポートが存在し、内容が空でないことを確認
     if [ -s "$WORK_DIR/consistency_report.json" ]; then
@@ -266,7 +334,8 @@ $report
    (修正後のテキスト)
    --- END: path/to/file1.txt ---
 
-4. 修正ログを$WORK_DIR/corrections.logに記録してください。" > "$WORK_DIR/corrections.log" 2>> "$LOG_FILE"
+4. 分割処理されたファイルの場合は、全体の整合性を考慮して修正してください。
+5. 修正ログを$WORK_DIR/corrections.logに記録してください。" > "$WORK_DIR/corrections.log" 2>> "$LOG_FILE"
 
         log "修正案の生成完了。詳細は $WORK_DIR/corrections.log を確認してください。"
         echo "修正案が $WORK_DIR/corrections.log に生成されました。手動での確認と適用を推奨します。"
@@ -280,8 +349,9 @@ $report
 
 # メイン処理
 main() {
-    echo -e "${GREEN}=== Gemini Corpus Builder 整合性管理 ===${NC}"
+    echo -e "${GREEN}=== Gemini Corpus Builder 整合性管理（自動分割対応版） ===${NC}"
     echo "大規模ファイルの整合性を保証しながら変換を実行します"
+    echo "大容量ファイルは自動的に分割処理されます"
     echo ""
     
     # 初期化
@@ -312,6 +382,7 @@ $(cat $WORK_DIR/consistency_report.json)
 - 全体の整合性スコア
 - 主な問題点
 - 修正済み項目数
+- 分割処理ファイルの統計
 - 推奨事項" 2>/dev/null
     fi
     
