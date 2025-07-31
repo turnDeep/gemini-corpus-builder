@@ -1,6 +1,11 @@
 {
   "theme": "dark",
   "model": "gemini-2.5-flash",
+  "auth": {
+    "timeout": 300,
+    "browser": true,
+    "port": 8080
+  },
   "tools": {
     "enabled": [
       "read-file",
