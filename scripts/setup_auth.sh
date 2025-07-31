@@ -12,6 +12,13 @@ NC='\033[0m'
 echo -e "${BLUE}=== Gemini CLI 認証セットアップ ===${NC}"
 echo ""
 
+# コンテナ内の.geminiディレクトリの権限を調整
+# devcontainerでマウントされたディレクトリはroot所有になることがあるため、現在のユーザーに所有権を移譲する
+if [ -d "$HOME/.gemini" ]; then
+    # echo "Adjusting permissions for $HOME/.gemini..."
+    sudo chown -R "$(id -u):$(id -g)" "$HOME/.gemini"
+fi
+
 # Gemini CLIがインストールされているか確認
 if ! command -v gemini &> /dev/null; then
     echo -e "${RED}エラー: Gemini CLIがインストールされていません${NC}"
