@@ -1,6 +1,6 @@
 {
   "name": "Gemini Corpus Builder Dev Container",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:18",
   
   "postCreateCommand": "npm install -g @google/gemini-cli && make setup",
   
@@ -23,9 +23,6 @@
   
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
-    "ghcr.io/devcontainers/features/node:1": {
-      "version": "lts"
-    },
     "ghcr.io/devcontainers/features/python:1": {
       "version": "3.11"
     }
