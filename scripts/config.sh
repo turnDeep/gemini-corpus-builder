@@ -39,3 +39,6 @@ export MAX_LOG_SIZE="100M"        # 最大ログサイズ
 export CONSISTENCY_CHECK=true     # 整合性チェック有効化
 export GLOBAL_DICT_UPDATE=true    # グローバル辞書の自動更新
 export AUTO_CORRECTION=false      # 自動修正（デフォルトは手動確認）
+
+# 認証設定
+export NO_BROWSER=true            # 非インタラクティブな認証を使用
