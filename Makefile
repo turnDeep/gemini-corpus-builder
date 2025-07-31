@@ -1,4 +1,4 @@
-.PHONY: setup convert validate clean stats help consistency test
+.PHONY: setup auth convert validate clean stats help consistency test
 
 # デフォルトタスク
 default: help
@@ -7,6 +7,7 @@ default: help
 help:
 	@echo "Gemini Corpus Builder コマンド:"
 	@echo "  make setup      - 初期セットアップ"
+	@echo "  make auth       - Gemini認証セットアップ"
 	@echo "  make convert    - 口語→文語変換の実行（基本）"
 	@echo "  make consistency - 整合性保証付き変換（推奨）"
 	@echo "  make validate   - 変換結果の検証"
@@ -17,14 +18,20 @@ help:
 # セットアップ
 setup:
 	@echo "環境をセットアップしています..."
-	mkdir -p input output logs .gemini/templates
+	mkdir -p input output logs .gemini/templates consistency_work
+	chmod +x scripts/*.sh
 	@echo "Gemini CLIがインストールされていることを確認してください："
 	@echo "  npm install -g @google/gemini-cli"
 	@echo ""
-	@echo "初期設定："
-	@echo "  1. gemini コマンドで認証"
-	@echo "  2. cp .gemini/settings.json.sample ~/.gemini/settings.json"
-	@echo "  3. inputディレクトリに変換したいテキストファイルを配置"
+	@echo "次のステップ："
+	@echo "  1. make auth    # Gemini認証"
+	@echo "  2. inputディレクトリに変換したいテキストファイルを配置"
+	@echo "  3. make convert # 変換実行"
+
+# 認証
+auth:
+	@echo "Gemini CLI認証を開始します..."
+	@bash scripts/setup_auth.sh
 
 # 変換実行
 convert:
