@@ -2,6 +2,9 @@
 
 # Gemini Corpus Builder - 共通ユーティリティ関数
 
+# スクリプトディレクトリを取得
+UTILS_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # ログ関数 (呼び出し元のスクリプトで定義されていることを想定)
 # log() { ... }
 
@@ -30,10 +33,34 @@ sanitize_filename() {
     echo "$1" | tr -d '/\0' | tr '[:space:][:punct:]' '_' | sed 's/__*/_/g' | sed 's/^_//;s/_$//'
 }
 
-# Geminiコマンドのラッパー関数（ロギング対応）
+# 認証チェック関数
+check_gemini_auth() {
+    if [ -f "$UTILS_SCRIPT_DIR/check_auth.sh" ]; then
+        "$UTILS_SCRIPT_DIR/check_auth.sh" --quiet
+        return $?
+    else
+        # check_auth.shがない場合は簡易チェック
+        if [ -f "$HOME/.gemini/credentials.json" ] || [ -n "$GEMINI_API_KEY" ]; then
+            return 0
+        else
+            return 1
+        fi
+    fi
+}
+
+# Geminiコマンドのラッパー関数（ロギング・認証エラー対応）
 gemini_wrapper() {
     local prompt="$1"
     local output_file="${2:-}" # 出力ファイルは任意
+
+    # 初回実行時に認証チェック（グローバル変数で1回だけ実行）
+    if [ -z "$GEMINI_AUTH_CHECKED" ]; then
+        if ! check_gemini_auth; then
+            echo "エラー: Gemini CLIの認証が必要です。'make auth' を実行してください。" >&2
+            exit 1
+        fi
+        export GEMINI_AUTH_CHECKED=1
+    fi
 
     # log関数が存在し、LOG_LEVELがdebugの場合のみプロンプトをログに出力
     if declare -f log > /dev/null && [ "${LOG_LEVEL}" == "debug" ]; then
@@ -41,15 +68,11 @@ gemini_wrapper() {
     fi
 
     local response
-    local stderr_dest
-    # LOG_FILEが設定されている場合はそこへ、なければ/dev/nullへエラー出力をリダイレクト
-    if [ -n "$LOG_FILE" ]; then
-        stderr_dest="$LOG_FILE"
-    else
-        stderr_dest="/dev/null"
-    fi
-
-    if response=$(gemini -p "$prompt" 2>> "$stderr_dest"); then
+    local stderr_output
+    local stderr_file=$(mktemp)
+    
+    # geminiコマンドを実行し、標準エラー出力を一時ファイルに保存
+    if response=$(gemini -p "$prompt" 2>"$stderr_file"); then
         # log関数が存在し、LOG_LEVELがdebugの場合のみレスポンスをログに出力
         if declare -f log > /dev/null && [ "${LOG_LEVEL}" == "debug" ]; then
             log "--- Gemini Response ---\n$response\n-----------------------"
@@ -60,15 +83,47 @@ gemini_wrapper() {
         else
             echo "$response"
         fi
+        
+        # 一時ファイルを削除
+        rm -f "$stderr_file"
         return 0
     else
-        # log関数が存在すればログに、なければ標準エラー出力にエラーを書き込む
-        if declare -f log > /dev/null; then
-            log "エラー: Geminiコマンドの実行に失敗しました。"
+        # エラー内容を読み取り
+        stderr_output=$(cat "$stderr_file")
+        
+        # 認証エラーのチェック
+        if echo "$stderr_output" | grep -qE "401|403|Unauthorized|Forbidden|credentials"; then
+            # log関数が存在すればログに、なければ標準エラー出力にエラーを書き込む
+            if declare -f log > /dev/null; then
+                log "エラー: Gemini認証エラーが発生しました。'make auth' で再認証してください。"
+            else
+                echo "エラー: Gemini認証エラーが発生しました。'make auth' で再認証してください。" >&2
+            fi
+            # 認証チェックフラグをリセット
+            unset GEMINI_AUTH_CHECKED
+        elif echo "$stderr_output" | grep -qE "rate limit|429|Too Many Requests"; then
+            if declare -f log > /dev/null; then
+                log "エラー: APIレート制限に達しました。しばらく待ってから再試行してください。"
+            else
+                echo "エラー: APIレート制限に達しました。しばらく待ってから再試行してください。" >&2
+            fi
         else
-            echo "エラー: Geminiコマンドの実行に失敗しました。" >&2
+            # その他のエラー
+            if declare -f log > /dev/null; then
+                log "エラー: Geminiコマンドの実行に失敗しました。詳細: $stderr_output"
+            else
+                echo "エラー: Geminiコマンドの実行に失敗しました。" >&2
+                echo "詳細: $stderr_output" >&2
+            fi
         fi
-        response="GEMINI_COMMAND_FAILED"
+        
+        # エラーログファイルがある場合は詳細を記録
+        if [ -n "$LOG_FILE" ]; then
+            echo "[$(date +'%Y-%m-%d %H:%M:%S')] Gemini Error: $stderr_output" >> "$LOG_FILE"
+        fi
+        
+        # 一時ファイルを削除
+        rm -f "$stderr_file"
         return 1
     fi
 }
