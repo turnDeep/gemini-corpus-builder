@@ -41,4 +41,5 @@ export GLOBAL_DICT_UPDATE=true    # グローバル辞書の自動更新
 export AUTO_CORRECTION=false      # 自動修正（デフォルトは手動確認）
 
 # 認証設定
-export NO_BROWSER=true            # 非インタラクティブな認証を使用
+# ブラウザ認証を有効にするため、NO_BROWSERは設定しない
+# export NO_BROWSER=true を削除
