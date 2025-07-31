@@ -34,8 +34,19 @@
   "mounts": [
     "source=${localWorkspaceFolder}/input,target=/workspace/input,type=bind",
     "source=${localWorkspaceFolder}/output,target=/workspace/output,type=bind",
-    "source=${localEnv:HOME}/.gemini,target=/home/node/.gemini,type=bind"
+    "source=${localEnv:HOME}/.gemini,target=/home/node/.gemini,type=bind,consistency=cached"
   ],
   
-  "remoteEnv": {}
+  "remoteEnv": {
+    "GEMINI_API_KEY": "${localEnv:GEMINI_API_KEY}",
+    "DISPLAY": "${localEnv:DISPLAY}"
+  },
+  
+  "forwardPorts": [],
+  
+  "remoteUser": "node",
+  
+  "containerEnv": {
+    "BROWSER": "echo 'Please open the following URL in your browser:'"
+  }
 }
