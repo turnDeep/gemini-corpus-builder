@@ -35,18 +35,24 @@ gemini_wrapper() {
     local prompt="$1"
     local output_file="${2:-}" # 出力ファイルは任意
 
-    if [ "${LOG_LEVEL}" == "debug" ]; then
-        log "--- Gemini Prompt ---
-$prompt
----------------------"
+    # log関数が存在し、LOG_LEVELがdebugの場合のみプロンプトをログに出力
+    if declare -f log > /dev/null && [ "${LOG_LEVEL}" == "debug" ]; then
+        log "--- Gemini Prompt ---\n$prompt\n---------------------"
     fi
 
     local response
-    if response=$(gemini -p "$prompt" 2>> "$LOG_FILE"); then
-        if [ "${LOG_LEVEL}" == "debug" ]; then
-            log "--- Gemini Response ---
-$response
------------------------"
+    local stderr_dest
+    # LOG_FILEが設定されている場合はそこへ、なければ/dev/nullへエラー出力をリダイレクト
+    if [ -n "$LOG_FILE" ]; then
+        stderr_dest="$LOG_FILE"
+    else
+        stderr_dest="/dev/null"
+    fi
+
+    if response=$(gemini -p "$prompt" 2>> "$stderr_dest"); then
+        # log関数が存在し、LOG_LEVELがdebugの場合のみレスポンスをログに出力
+        if declare -f log > /dev/null && [ "${LOG_LEVEL}" == "debug" ]; then
+            log "--- Gemini Response ---\n$response\n-----------------------"
         fi
 
         if [ -n "$output_file" ]; then
@@ -56,7 +62,12 @@ $response
         fi
         return 0
     else
-        log "エラー: Geminiコマンドの実行に失敗しました。"
+        # log関数が存在すればログに、なければ標準エラー出力にエラーを書き込む
+        if declare -f log > /dev/null; then
+            log "エラー: Geminiコマンドの実行に失敗しました。"
+        else
+            echo "エラー: Geminiコマンドの実行に失敗しました。" >&2
+        fi
         response="GEMINI_COMMAND_FAILED"
         return 1
     fi
