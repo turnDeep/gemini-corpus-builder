@@ -8,6 +8,7 @@
 - npm または yarn
 - Docker (Dev Container使用時)
 - VS Code (推奨)
+- **ブラウザ** (認証に必要)
 
 ## セットアップ手順
 
@@ -23,12 +24,59 @@ gemini --version
 
 ### 2. 初回認証
 
-```bash
-# Gemini CLIの認証
-gemini
+#### 方法1: ブラウザ認証（推奨）
 
-# Googleアカウントでログイン
-# 無料枠: 60リクエスト/分、1000リクエスト/日
+```bash
+# 認証セットアップスクリプトを実行
+chmod +x scripts/setup_auth.sh
+./scripts/setup_auth.sh
+
+# または直接実行
+gemini auth login
+```
+
+**認証の流れ：**
+1. コマンド実行後、ブラウザが自動的に開きます
+2. Googleアカウントでログイン
+3. 権限を承認
+4. "認証が完了しました"のメッセージを確認
+
+**トラブルシューティング：**
+
+**ブラウザが開かない場合：**
+- 表示されたURLを手動でブラウザにコピー＆ペースト
+- WSL2の場合: Windows側のブラウザでURLを開く
+
+**タイムアウトエラーの場合：**
+```bash
+# タイムアウトを延長
+export GEMINI_AUTH_TIMEOUT=600  # 10分に設定
+gemini auth login
+```
+
+**SSH接続の場合：**
+```bash
+# X11転送を有効にしてSSH接続
+ssh -X username@hostname
+
+# または、ローカルで認証してファイルをコピー
+# ローカルマシンで:
+gemini auth login
+scp ~/.gemini/credentials.json username@hostname:~/.gemini/
+```
+
+#### 方法2: APIキー認証（ブラウザが使えない場合）
+
+```bash
+# Google AI StudioでAPIキーを取得
+# https://aistudio.google.com/app/apikey
+
+# 環境変数として設定
+echo "export GEMINI_API_KEY=your-api-key-here" >> ~/.bashrc
+source ~/.bashrc
+
+# または .env ファイルに記載
+echo "GEMINI_API_KEY=your-api-key-here" > .env
 ```
 
 ### 3. プロジェクトのセットアップ
@@ -52,17 +100,47 @@ cp .gemini/settings.json.sample ~/.gemini/settings.json
 nano ~/.gemini/settings.json
 ```
 
-### 5. APIキーの設定（高頻度利用時）
-
-無料枠を超える場合は、Google AI StudioでAPIキーを取得：
+### 5. 認証の確認
 
 ```bash
-# 環境変数として設定
-echo "export GEMINI_API_KEY=your-api-key-here" >> ~/.bashrc
-source ~/.bashrc
+# 認証状態の確認
+gemini auth status
 
-# または .env ファイルに記載
-echo "GEMINI_API_KEY=your-api-key-here" > .env
+# テスト実行
+echo "テスト" | gemini -p "これは何ですか？"
+```
+
+## Dev Container での認証
+
+Dev Container環境では、以下の方法で認証を行います：
+
+### 方法1: ホストマシンの認証情報を共有
+
+`.devcontainer/devcontainer.json` に以下を追加：
+
+```json
+{
+  "mounts": [
+    "source=${localEnv:HOME}/.gemini,target=/home/node/.gemini,type=bind"
+  ]
+}
+```
+
+### 方法2: 環境変数でAPIキーを渡す
+
+```json
+{
+  "remoteEnv": {
+    "GEMINI_API_KEY": "${localEnv:GEMINI_API_KEY}"
+  }
+}
+```
+
+### 方法3: コンテナ内で認証
+
+```bash
+# コンテナ内のターミナルで
+./scripts/setup_auth.sh
 ```
 
 ## 使用方法
@@ -79,6 +157,9 @@ cp /path/to/your/files/*.txt input/
 ```bash
 # 全ファイルを一括変換
 make convert
+
+# 整合性保証付き変換（大規模処理向け）
+make consistency
 
 # または個別に実行
 ./scripts/batch_convert.sh
@@ -97,124 +178,39 @@ ls -la output/
 make validate
 ```
 
-## ディレクトリ構造
+## 認証に関するFAQ
 
-```
-gemini-corpus-builder/
-├── input/          # 口語テキストファイル（入力）
-├── output/         # 文語テキストファイル（出力）
-├── logs/           # 処理ログ
-├── scripts/        # 処理スクリプト
-├── .gemini/        # Gemini設定
-│   ├── GEMINI.md   # 変換ルール定義
-│   └── templates/  # テンプレート
-└── test/           # テスト用ファイル
-```
+### Q: 「Sign in」で止まってタイムアウトする
 
-## カスタマイズ
+A: 以下を確認してください：
+1. ブラウザが利用可能な環境か
+2. ポップアップブロッカーが無効か
+3. ネットワーク接続が安定しているか
 
-### 変換ルールの調整
+### Q: WSL2で認証できない
 
-`.gemini/GEMINI.md`を編集して変換ルールをカスタマイズ：
-
-- 文語化のレベル
-- メタデータの形式
-- 特殊な処理ルール
-
-### バッチ処理の最適化
-
-`scripts/config.sh`で処理パラメータを調整：
-
+A: Windows側のブラウザを使用：
 ```bash
-# バッチサイズ（一度に処理するファイル数）
-BATCH_SIZE=50
-
-# API呼び出し間隔（秒）
-API_DELAY=0.5
-
-# リトライ設定
-MAX_RETRIES=3
+# WSL2内で
+gemini auth login
+# 表示されたURLをWindows側のブラウザで開く
 ```
+
+### Q: リモートサーバーで認証したい
+
+A: 以下のいずれかの方法：
+1. ローカルで認証してcredentials.jsonをコピー
+2. APIキーを使用
+3. SSH X11転送を使用（ssh -X）
+
+### Q: 認証情報はどこに保存される？
+
+A: `~/.gemini/credentials.json` に保存されます。
+このファイルは安全に管理してください。
 
 ## トラブルシューティング
 
-### Gemini CLIが見つからない
-
-```bash
-# npmのグローバルパスを確認
-npm config get prefix
-
-# パスを追加
-export PATH=$PATH:$(npm config get prefix)/bin
-```
-
-### レート制限エラー
-
-- APIキーを設定して制限を緩和
-- バッチサイズを小さくする
-- API呼び出し間隔を増やす
-
-### 変換品質が不安定
-
-- `.gemini/GEMINI.md`の指示を具体化
-- サンプル変換で事前テスト
-- ログを確認して問題箇所を特定
-
-### メモリ不足
-
-```bash
-# Node.jsのメモリ上限を増やす
-export NODE_OPTIONS="--max-old-space-size=4096"
-```
-
-## 高度な使用方法
-
-### 並列処理（実験的）
-
-```bash
-# 並列処理スクリプトを使用
-./scripts/parallel_convert.sh -j 4
-```
-
-### カスタムフィルター
-
-```bash
-# 特定のパターンのファイルのみ処理
-find input -name "*interview*.txt" | ./scripts/convert_from_list.sh
-```
-
-### 差分変換
-
-```bash
-# 未変換のファイルのみ処理
-./scripts/incremental_convert.sh
-```
-
-## パフォーマンスチューニング
-
-### 推奨設定
-
-- **小規模（〜100ファイル）**: デフォルト設定で問題なし
-- **中規模（100〜1000ファイル）**: バッチサイズ50、API遅延0.5秒
-- **大規模（1000ファイル以上）**: APIキー必須、並列処理推奨
-
-### モニタリング
-
-```bash
-# リアルタイム進捗確認
-tail -f logs/conversion_*.log
-
-# 処理速度の確認
-./scripts/show_performance.sh
-```
-
-## サポート
-
-問題が発生した場合：
-
-1. まず`logs/`ディレクトリのログを確認
-2. [トラブルシューティングガイド](docs/TROUBLESHOOTING.md)を参照
-3. それでも解決しない場合はIssueを作成
+詳細なトラブルシューティングについては、[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) を参照してください。
 
 ---
 
