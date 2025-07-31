@@ -61,7 +61,7 @@ echo ""
 export GEMINI_AUTH_TIMEOUT=300  # 5分
 
 # 認証コマンド実行
-if gemini auth login; then
+if gemini auth; then
     echo ""
     echo -e "${GREEN}認証が完了しました！${NC}"
     echo ""
