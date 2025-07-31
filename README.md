@@ -24,14 +24,33 @@ cd gemini-corpus-builder
 ### 2. Dev Containerで開く（推奨）
 VS Codeでプロジェクトを開き、「Reopen in Container」を選択
 
-### 3. 初期設定
-```bash
-# Gemini CLIの認証
-gemini
+### 3. 初期設定と認証
 
-# 設定ファイルのカスタマイズ
-cp .gemini/settings.json.sample ~/.gemini/settings.json
+#### 🔐 重要：Gemini CLIの認証
+
+このツールを使用するには、Gemini CLIの認証が必要です。
+
+```bash
+# Gemini CLIのインストール（未インストールの場合）
+npm install -g @google/gemini-cli
+
+# 認証セットアップ
+make auth
+# または
+./scripts/setup_auth.sh
 ```
+
+**認証時の注意事項：**
+- ブラウザが自動的に開きます
+- Googleアカウントでログインしてください
+- ブラウザが開かない場合は、表示されたURLを手動で開いてください
+
+**よくある認証の問題：**
+- WSL2の場合：Windows側のブラウザでURLを開く
+- SSH接続の場合：ローカルで認証後、`~/.gemini/credentials.json`をコピー
+- タイムアウトの場合：`export GEMINI_AUTH_TIMEOUT=600`で延長
+
+詳細は[トラブルシューティングガイド](docs/TROUBLESHOOTING.md)を参照してください。
 
 ### 4. 変換の実行
 ```bash
@@ -75,6 +94,7 @@ gemini-corpus-builder/
 │   ├── 📜 GEMINI.md       # Gemini への指示書
 │   └── 📜 settings.json   # Gemini CLI設定
 ├── 📁 scripts/            # 処理スクリプト
+│   ├── 📜 setup_auth.sh           # 認証セットアップ（NEW）
 │   ├── 📜 batch_convert.sh        # バッチ変換スクリプト
 │   ├── 📜 consistency_manager.sh  # 整合性管理スクリプト
 │   ├── 📜 validate_output.sh      # 品質検証スクリプト
@@ -130,17 +150,24 @@ RETRY_ATTEMPTS=3     # エラー時のリトライ回数
 
 ### よくある問題
 
-1. **変換が進まない**
+1. **認証でタイムアウトする**
+   - `scripts/config.sh`から`NO_BROWSER=true`を削除
+   - `make auth`で認証セットアップを実行
+   - 詳細は[認証トラブルシューティング](docs/TROUBLESHOOTING.md#認証関連の問題)参照
+
+2. **変換が進まない**
    - `logs/conversion.log`でエラーを確認
    - Gemini APIのレート制限を確認
 
-2. **品質が安定しない**
+3. **品質が安定しない**
    - `.gemini/GEMINI.md`の指示を具体化
    - サンプル変換で事前検証
 
-3. **メモリ不足**
+4. **メモリ不足**
    - バッチサイズを小さく調整
    - 並列実行数を減らす
+
+詳細なトラブルシューティングは[こちら](docs/TROUBLESHOOTING.md)をご覧ください。
 
 ## 📝 ライセンス
 
