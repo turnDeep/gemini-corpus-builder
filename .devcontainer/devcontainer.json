@@ -33,7 +33,8 @@
   
   "mounts": [
     "source=${localWorkspaceFolder}/input,target=/workspace/input,type=bind",
-    "source=${localWorkspaceFolder}/output,target=/workspace/output,type=bind"
+    "source=${localWorkspaceFolder}/output,target=/workspace/output,type=bind",
+    "source=${localEnv:HOME}/.gemini,target=${containerEnv:HOME}/.gemini,type=bind"
   ],
   
   "remoteEnv": {}
