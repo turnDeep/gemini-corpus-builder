@@ -36,8 +36,5 @@
     "source=${localWorkspaceFolder}/output,target=/workspace/output,type=bind"
   ],
   
-  "remoteEnv": {
-    "GEMINI_API_KEY": "${localEnv:GEMINI_API_KEY}",
-    "NO_BROWSER": "true"
-  }
+  "remoteEnv": {}
 }
