@@ -1,6 +1,6 @@
 {
   "name": "Gemini Corpus Builder Dev Container",
-  "image": "mcr.microsoft.com/devcontainers/javascript-node:18",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
   
   "postCreateCommand": "npm install -g @google/gemini-cli && make setup",
   
