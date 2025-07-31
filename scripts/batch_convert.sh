@@ -42,6 +42,36 @@ show_progress() {
     printf "] %d%% (%d/%d)" $percentage $current $total
 }
 
+# 認証チェック
+echo -e "${GREEN}=== Gemini Corpus Builder (自動分割対応版) ===${NC}"
+echo "認証状態を確認しています..."
+
+# check_auth.shが存在する場合は実行
+if [ -f "$SCRIPT_DIR/check_auth.sh" ]; then
+    chmod +x "$SCRIPT_DIR/check_auth.sh"
+    if ! "$SCRIPT_DIR/check_auth.sh" --quiet; then
+        echo -e "${RED}エラー: Gemini CLIの認証が必要です${NC}"
+        echo ""
+        echo "以下のコマンドで認証を行ってください："
+        echo "  make auth"
+        echo "または"
+        echo "  ./scripts/setup_auth.sh"
+        echo ""
+        echo "詳細は PROJECT_SETUP.md を参照してください。"
+        exit 1
+    fi
+else
+    # check_auth.shがない場合は簡易チェック
+    if ! check_gemini_auth; then
+        echo -e "${RED}エラー: Gemini CLIの認証が必要です${NC}"
+        echo "  make auth を実行してください"
+        exit 1
+    fi
+fi
+
+echo -e "${GREEN}✓ 認証確認完了${NC}"
+echo ""
+
 # 通常変換（大容量ファイルは自動分割）
 convert_file_auto() {
     local input_file=$1
@@ -88,7 +118,6 @@ $content"
 }
 
 # 初期化
-echo -e "${GREEN}=== Gemini Corpus Builder (自動分割対応版) ===${NC}"
 log "バッチ変換を開始します"
 
 # ディレクトリ確認
